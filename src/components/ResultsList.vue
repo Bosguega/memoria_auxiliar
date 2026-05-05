@@ -1,0 +1,76 @@
+<script setup lang="ts">
+import type { SearchResult } from '../types';
+
+defineProps<{
+  results: SearchResult[];
+}>();
+
+const emit = defineEmits<{
+  delete: [id: number];
+  edit: [note: any];
+}>();
+</script>
+
+<template>
+  <section class="panel results-panel">
+    <h2>Resultados</h2>
+
+    <p v-if="!results.length" class="muted">Nenhum resultado ainda.</p>
+
+    <ol v-else class="results-list">
+      <li v-for="result in results" :key="result.note.id">
+        <div class="result-content">
+          <p>{{ result.note.content }}</p>
+          <div class="result-meta">
+            <span>score {{ result.score.toFixed(3) }}</span>
+            <div class="actions">
+              <button class="edit-btn" @click="emit('edit', result.note)">Editar</button>
+              <button class="delete-btn" @click="emit('delete', result.note.id)">Excluir</button>
+            </div>
+          </div>
+        </div>
+      </li>
+    </ol>
+  </section>
+</template>
+
+<style scoped>
+.result-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+.result-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+}
+.actions {
+  display: flex;
+  gap: 8px;
+}
+.edit-btn {
+  background: #6b7280;
+  color: white;
+  border: none;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.edit-btn:hover {
+  background: #4b5563;
+}
+.delete-btn {
+  background: #ff4444;
+  color: white;
+  border: none;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.delete-btn:hover {
+  background: #cc0000;
+}
+</style>
