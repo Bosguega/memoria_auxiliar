@@ -6,13 +6,13 @@ const emit = defineEmits<{
 }>();
 
 const query = ref('');
-let timeout: number | null = null;
+let timeout: ReturnType<typeof setTimeout> | null = null;
 
 watch(query, (newVal) => {
   if (timeout) clearTimeout(timeout);
   timeout = setTimeout(() => {
     emit('search', newVal.trim());
-  }, 300) as any;
+  }, 300);
 });
 
 function submit() {

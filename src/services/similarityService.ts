@@ -1,5 +1,18 @@
 import type { Note, SearchResult } from '../types';
 
+function parseEmbedding(value: string): number[] | null {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'number')) {
+      return parsed;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 export function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length || a.length === 0) {
     return 0;
@@ -24,10 +37,13 @@ export function cosineSimilarity(a: number[], b: number[]): number {
 
 export function searchBySimilarity(notes: Note[], queryEmbedding: number[], limit = 5, threshold = 0.5): SearchResult[] {
   return notes
-    .map((note) => ({
-      note,
-      score: cosineSimilarity(JSON.parse(note.embedding) as number[], queryEmbedding),
-    }))
+    .map((note) => {
+      const embedding = parseEmbedding(note.embedding);
+      return {
+        note,
+        score: embedding ? cosineSimilarity(embedding, queryEmbedding) : 0,
+      };
+    })
     .filter((result) => result.score >= threshold)
     .sort((first, second) => second.score - first.score)
     .slice(0, limit);

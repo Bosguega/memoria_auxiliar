@@ -18,7 +18,7 @@ cp .env.example .env
 Edite `.env` e preencha:
 
 ```bash
-VITE_GEMINI_API_KEY=sua_chave
+GEMINI_API_KEY=sua_chave
 ```
 
 ## Rodar em desenvolvimento
@@ -38,10 +38,10 @@ npm run tauri:build
 - `src/views/HomeView.vue`: tela unica do MVP.
 - `src/components`: formulario de nota, busca e lista de resultados.
 - `src/services/databaseService.ts`: acesso ao SQLite via comandos Tauri.
-- `src/services/embeddingService.ts`: embeddings Gemini com cache por hash SHA-256.
+- `src/services/embeddingService.ts`: cache por hash SHA-256 e chamada ao comando Tauri de embeddings.
 - `src/services/similarityService.ts`: similaridade de cosseno em TypeScript.
-- `src/services/llmService.ts`: resumo opcional com Gemini Flash Lite.
-- `src-tauri/src/lib.rs`: comandos Rust e inicializacao do SQLite local.
+- `src/services/llmService.ts`: resumo e respostas via comandos Tauri.
+- `src-tauri/src/lib.rs`: comandos Rust, inicializacao do SQLite local e chamadas Gemini sem expor a chave no bundle frontend.
 
 ## Banco
 

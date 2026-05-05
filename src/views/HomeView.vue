@@ -9,6 +9,7 @@ import { getEmbedding } from '../services/embeddingService';
 import { generateAnswer, summarizeResults } from '../services/llmService';
 import { searchBySimilarity } from '../services/similarityService';
 import { notesStore } from '../store/notesStore';
+import type { Note } from '../types';
 
 async function loadNotes() {
   notesStore.notes = await listNotes();
@@ -101,7 +102,7 @@ onMounted(() => {
   <main class="app-shell">
     <header>
       <p>Memoria Auxiliar</p>
-      <h1>Notas curtas com busca semantica local</h1>
+      <h1>Notas curtas com armazenamento local e IA Gemini</h1>
     </header>
 
     <SearchBox @search="searchNotes" />

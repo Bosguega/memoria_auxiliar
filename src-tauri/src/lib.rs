@@ -1,6 +1,8 @@
 use chrono::Utc;
 use rusqlite::{params, Connection};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use std::env;
 use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
@@ -11,6 +13,81 @@ struct Note {
     content: String,
     embedding: String,
     created_at: String,
+}
+
+#[derive(Deserialize)]
+struct GeminiEmbeddingResponse {
+    embedding: Option<GeminiEmbedding>,
+    embeddings: Option<Vec<GeminiEmbedding>>,
+}
+
+#[derive(Deserialize)]
+struct GeminiEmbedding {
+    values: Option<Vec<f64>>,
+}
+
+#[derive(Deserialize)]
+struct GeminiGenerateResponse {
+    candidates: Option<Vec<GeminiCandidate>>,
+}
+
+#[derive(Deserialize)]
+struct GeminiCandidate {
+    content: Option<GeminiContent>,
+}
+
+#[derive(Deserialize)]
+struct GeminiContent {
+    parts: Option<Vec<GeminiPart>>,
+}
+
+#[derive(Deserialize)]
+struct GeminiPart {
+    text: Option<String>,
+}
+
+fn load_dotenv(app: &tauri::AppHandle) {
+    let _ = dotenvy::dotenv();
+
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        let _ = dotenvy::from_path(resource_dir.join(".env"));
+    }
+
+    if let Ok(current_dir) = env::current_dir() {
+        let _ = dotenvy::from_path(current_dir.join(".env"));
+        if let Some(parent) = current_dir.parent() {
+            let _ = dotenvy::from_path(parent.join(".env"));
+        }
+    }
+}
+
+fn gemini_api_key() -> Result<String, String> {
+    env::var("GEMINI_API_KEY")
+        .map_err(|_| "Configure GEMINI_API_KEY no arquivo .env.".to_string())
+        .and_then(|key| {
+            if key.trim().is_empty() || key == "coloque_sua_chave_aqui" {
+                Err("Configure GEMINI_API_KEY no arquivo .env.".to_string())
+            } else {
+                Ok(key)
+            }
+        })
+}
+
+fn gemini_model(env_name: &str, fallback: &str) -> String {
+    env::var(env_name).unwrap_or_else(|_| fallback.to_string())
+}
+
+fn compact_error_details(details: String) -> String {
+    const MAX_DETAILS_LENGTH: usize = 500;
+    let details = details.trim();
+    if details.chars().count() > MAX_DETAILS_LENGTH {
+        format!(
+            "{}...",
+            details.chars().take(MAX_DETAILS_LENGTH).collect::<String>()
+        )
+    } else {
+        details.to_string()
+    }
 }
 
 fn database_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -50,6 +127,162 @@ fn open_database(app: &tauri::AppHandle) -> Result<Connection, String> {
         .map_err(|error| format!("Nao foi possivel inicializar o banco: {error}"))?;
 
     Ok(connection)
+}
+
+#[tauri::command]
+async fn generate_embedding(app: tauri::AppHandle, text: String) -> Result<Vec<f64>, String> {
+    let normalized = text.trim();
+    if normalized.is_empty() {
+        return Err("Texto vazio nao pode gerar embedding.".to_string());
+    }
+
+    load_dotenv(&app);
+    let api_key = gemini_api_key()?;
+    let model = gemini_model("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001");
+    let client = reqwest::Client::new();
+    let url = format!(
+        "https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent?key={api_key}"
+    );
+
+    let response = client
+        .post(url)
+        .json(&json!({
+            "model": format!("models/{model}"),
+            "content": {
+                "parts": [{ "text": normalized }]
+            }
+        }))
+        .send()
+        .await
+        .map_err(|error| format!("Falha ao chamar Gemini Embedding: {error}"))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let details = response.text().await.unwrap_or_default();
+        return Err(format!(
+            "Falha ao gerar embedding: {status} {}",
+            compact_error_details(details)
+        ));
+    }
+
+    let data = response
+        .json::<GeminiEmbeddingResponse>()
+        .await
+        .map_err(|error| format!("Resposta de embedding invalida: {error}"))?;
+
+    let embedding = data
+        .embedding
+        .and_then(|embedding| embedding.values)
+        .or_else(|| {
+            data.embeddings
+                .and_then(|mut embeddings| embeddings.pop())
+                .and_then(|embedding| embedding.values)
+        })
+        .filter(|values| !values.is_empty())
+        .ok_or_else(|| "A API nao retornou um embedding valido.".to_string())?;
+
+    Ok(embedding)
+}
+
+async fn generate_text(app: tauri::AppHandle, prompt: String, empty_message: &str) -> Result<String, String> {
+    load_dotenv(&app);
+    let api_key = gemini_api_key()?;
+    let model = gemini_model("GEMINI_LLM_MODEL", "gemini-2.5-flash-lite");
+    let client = reqwest::Client::new();
+    let url = format!(
+        "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    );
+
+    let response = client
+        .post(url)
+        .json(&json!({
+            "contents": [{
+                "parts": [{ "text": prompt }]
+            }]
+        }))
+        .send()
+        .await
+        .map_err(|error| format!("Falha ao chamar Gemini: {error}"))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let details = response.text().await.unwrap_or_default();
+        return Err(format!(
+            "Falha ao gerar texto: {status} {}",
+            compact_error_details(details)
+        ));
+    }
+
+    let data = response
+        .json::<GeminiGenerateResponse>()
+        .await
+        .map_err(|error| format!("Resposta de texto invalida: {error}"))?;
+
+    let text = data
+        .candidates
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|candidate| candidate.content)
+        .flat_map(|content| content.parts.unwrap_or_default())
+        .filter_map(|part| part.text)
+        .collect::<Vec<_>>()
+        .join("")
+        .trim()
+        .to_string();
+
+    if text.is_empty() {
+        Err(empty_message.to_string())
+    } else {
+        Ok(text)
+    }
+}
+
+#[tauri::command]
+async fn summarize_notes(app: tauri::AppHandle, notes: Vec<String>) -> Result<String, String> {
+    if notes.is_empty() {
+        return Err("Nao ha resultados para resumir.".to_string());
+    }
+
+    let notes = notes
+        .into_iter()
+        .enumerate()
+        .map(|(index, note)| format!("{}. {}", index + 1, note))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let prompt = format!(
+        "Resuma ou organize as informacoes abaixo de forma clara. Use apenas os dados fornecidos.\n\n{notes}"
+    );
+
+    generate_text(app, prompt, "A API nao retornou resumo.").await
+}
+
+#[tauri::command]
+async fn generate_answer(
+    app: tauri::AppHandle,
+    question: String,
+    context_notes: Vec<String>,
+) -> Result<String, String> {
+    if question.trim().is_empty() {
+        return Err("Pergunta vazia nao pode gerar resposta.".to_string());
+    }
+
+    let context = if context_notes.is_empty() {
+        "Nenhuma nota relevante encontrada.".to_string()
+    } else {
+        context_notes
+            .into_iter()
+            .enumerate()
+            .map(|(index, note)| format!("[Nota {}]: {}", index + 1, note))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
+    let prompt = format!(
+        "Voce e um assistente de memoria pessoal. Responda a pergunta do usuario usando as notas fornecidas como contexto.\nSe a resposta nao estiver nas notas, avise que nao encontrou informacao sobre isso nas suas memorias.\n\nCONTEXTO:\n{context}\n\nPERGUNTA:\n{}",
+        question.trim()
+    );
+
+    generate_text(app, prompt, "A API nao retornou resposta.").await
 }
 
 #[tauri::command]
@@ -134,7 +367,9 @@ fn save_cached_embedding(
             "
             INSERT INTO embedding_cache (hash, embedding, created_at)
             VALUES (?1, ?2, ?3)
-            ON CONFLICT(hash) DO UPDATE SET embedding = excluded.embedding
+            ON CONFLICT(hash) DO UPDATE SET
+                embedding = excluded.embedding,
+                created_at = excluded.created_at
             ",
             params![hash, embedding, created_at],
         )
@@ -172,7 +407,10 @@ pub fn run() {
             delete_note,
             update_note,
             get_cached_embedding,
-            save_cached_embedding
+            save_cached_embedding,
+            generate_embedding,
+            summarize_notes,
+            generate_answer
         ])
         .run(tauri::generate_context!())
         .expect("erro ao executar o aplicativo Tauri");

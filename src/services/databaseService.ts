@@ -26,7 +26,20 @@ export async function updateNote(id: number, content: string, embedding: number[
 
 export async function getCachedEmbedding(hash: string): Promise<number[] | null> {
   const embedding = await invoke<string | null>('get_cached_embedding', { hash });
-  return embedding ? JSON.parse(embedding) as number[] : null;
+  if (!embedding) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(embedding) as unknown;
+    if (Array.isArray(parsed) && parsed.every((value) => typeof value === 'number')) {
+      return parsed;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
 }
 
 export async function saveCachedEmbedding(hash: string, embedding: number[]): Promise<void> {

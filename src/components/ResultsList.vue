@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SearchResult } from '../types';
+import type { Note, SearchResult } from '../types';
 
 defineProps<{
   results: SearchResult[];
@@ -7,7 +7,7 @@ defineProps<{
 
 const emit = defineEmits<{
   delete: [id: number];
-  edit: [note: any];
+  edit: [note: Note];
 }>();
 </script>
 
