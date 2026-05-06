@@ -6,6 +6,7 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 use tauri::Manager;
+use tokio::time::{sleep, Duration};
 
 #[derive(Serialize)]
 struct Note {
@@ -90,6 +91,28 @@ fn compact_error_details(details: String) -> String {
     }
 }
 
+async fn retry_with_backoff<F, Fut, T>(mut attempt: F, max_retries: u32) -> Result<T, String>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T, String>>,
+{
+    let mut delay = Duration::from_millis(500);
+    for attempt_num in 0..=max_retries {
+        match attempt().await {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                if attempt_num == max_retries {
+                    return Err(e);
+                }
+                eprintln!("Tentativa {} falhou: {}. Tentando novamente em {:?}...", attempt_num + 1, e, delay);
+                sleep(delay).await;
+                delay = delay.saturating_mul(2); // Exponential backoff
+            }
+        }
+    }
+    unreachable!()
+}
+
 fn database_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
@@ -144,44 +167,49 @@ async fn generate_embedding(app: tauri::AppHandle, text: String) -> Result<Vec<f
         "https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent?key={api_key}"
     );
 
-    let response = client
-        .post(url)
-        .json(&json!({
-            "model": format!("models/{model}"),
-            "content": {
-                "parts": [{ "text": normalized }]
+    retry_with_backoff(
+        || async {
+            let response = client
+                .post(&url)
+                .json(&json!({
+                    "model": format!("models/{model}"),
+                    "content": {
+                        "parts": [{ "text": &normalized }]
+                    }
+                }))
+                .send()
+                .await
+                .map_err(|error| format!("Falha ao chamar Gemini Embedding: {error}"))?;
+
+            if !response.status().is_success() {
+                let status = response.status();
+                let details = response.text().await.unwrap_or_default();
+                return Err(format!(
+                    "Falha ao gerar embedding: {status} {}",
+                    compact_error_details(details)
+                ));
             }
-        }))
-        .send()
-        .await
-        .map_err(|error| format!("Falha ao chamar Gemini Embedding: {error}"))?;
 
-    if !response.status().is_success() {
-        let status = response.status();
-        let details = response.text().await.unwrap_or_default();
-        return Err(format!(
-            "Falha ao gerar embedding: {status} {}",
-            compact_error_details(details)
-        ));
-    }
+            let data = response
+                .json::<GeminiEmbeddingResponse>()
+                .await
+                .map_err(|error| format!("Resposta de embedding invalida: {error}"))?;
 
-    let data = response
-        .json::<GeminiEmbeddingResponse>()
-        .await
-        .map_err(|error| format!("Resposta de embedding invalida: {error}"))?;
-
-    let embedding = data
-        .embedding
-        .and_then(|embedding| embedding.values)
-        .or_else(|| {
-            data.embeddings
-                .and_then(|mut embeddings| embeddings.pop())
+            let embedding = data
+                .embedding
                 .and_then(|embedding| embedding.values)
-        })
-        .filter(|values| !values.is_empty())
-        .ok_or_else(|| "A API nao retornou um embedding valido.".to_string())?;
+                .or_else(|| {
+                    data.embeddings
+                        .and_then(|mut embeddings| embeddings.pop())
+                        .and_then(|embedding| embedding.values)
+                })
+                .filter(|values| !values.is_empty())
+                .ok_or_else(|| "A API nao retornou um embedding valido.".to_string())?;
 
-    Ok(embedding)
+            Ok(embedding)
+        },
+        3, // max_retries
+    ).await
 }
 
 async fn generate_text(app: tauri::AppHandle, prompt: String, empty_message: &str) -> Result<String, String> {
@@ -193,48 +221,53 @@ async fn generate_text(app: tauri::AppHandle, prompt: String, empty_message: &st
         "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     );
 
-    let response = client
-        .post(url)
-        .json(&json!({
-            "contents": [{
-                "parts": [{ "text": prompt }]
-            }]
-        }))
-        .send()
-        .await
-        .map_err(|error| format!("Falha ao chamar Gemini: {error}"))?;
+    retry_with_backoff(
+        || async {
+            let response = client
+                .post(&url)
+                .json(&json!({
+                    "contents": [{
+                        "parts": [{ "text": &prompt }]
+                    }]
+                }))
+                .send()
+                .await
+                .map_err(|error| format!("Falha ao chamar Gemini: {error}"))?;
 
-    if !response.status().is_success() {
-        let status = response.status();
-        let details = response.text().await.unwrap_or_default();
-        return Err(format!(
-            "Falha ao gerar texto: {status} {}",
-            compact_error_details(details)
-        ));
-    }
+            if !response.status().is_success() {
+                let status = response.status();
+                let details = response.text().await.unwrap_or_default();
+                return Err(format!(
+                    "Falha ao gerar texto: {status} {}",
+                    compact_error_details(details)
+                ));
+            }
 
-    let data = response
-        .json::<GeminiGenerateResponse>()
-        .await
-        .map_err(|error| format!("Resposta de texto invalida: {error}"))?;
+            let data = response
+                .json::<GeminiGenerateResponse>()
+                .await
+                .map_err(|error| format!("Resposta de texto invalida: {error}"))?;
 
-    let text = data
-        .candidates
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|candidate| candidate.content)
-        .flat_map(|content| content.parts.unwrap_or_default())
-        .filter_map(|part| part.text)
-        .collect::<Vec<_>>()
-        .join("")
-        .trim()
-        .to_string();
+            let text = data
+                .candidates
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|candidate| candidate.content)
+                .flat_map(|content| content.parts.unwrap_or_default())
+                .filter_map(|part| part.text)
+                .collect::<Vec<_>>()
+                .join("")
+                .trim()
+                .to_string();
 
-    if text.is_empty() {
-        Err(empty_message.to_string())
-    } else {
-        Ok(text)
-    }
+            if text.is_empty() {
+                Err(empty_message.to_string())
+            } else {
+                Ok(text)
+            }
+        },
+        3,
+    ).await
 }
 
 #[tauri::command]
@@ -398,6 +431,8 @@ fn update_note(app: tauri::AppHandle, id: i64, content: String, embedding: Strin
         .map_err(|error| format!("Nao foi possivel atualizar a nota: {error}"))?;
     Ok(())
 }
+
+
 
 pub fn run() {
     tauri::Builder::default()

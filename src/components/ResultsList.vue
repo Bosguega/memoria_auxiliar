@@ -24,8 +24,8 @@ const emit = defineEmits<{
           <div class="result-meta">
             <span>score {{ result.score.toFixed(3) }}</span>
             <div class="actions">
-              <button class="edit-btn" @click="emit('edit', result.note)">Editar</button>
-              <button class="delete-btn" @click="emit('delete', result.note.id)">Excluir</button>
+              <button class="edit-btn" @click="emit('edit', result.note)" title="Editar nota" aria-label="Editar nota">Editar</button>
+              <button class="delete-btn" @click="emit('delete', result.note.id)" title="Excluir nota" aria-label="Excluir nota">Excluir</button>
             </div>
           </div>
         </div>

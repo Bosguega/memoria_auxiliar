@@ -35,7 +35,10 @@ export function cosineSimilarity(a: number[], b: number[]): number {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-export function searchBySimilarity(notes: Note[], queryEmbedding: number[], limit = 5, threshold = 0.5): SearchResult[] {
+export function searchBySimilarity(notes: Note[], queryEmbedding: number[], limit = 5, baseThreshold = 0.5, queryLength = 0): SearchResult[] {
+  // Dynamic threshold: lower for longer queries to allow more results
+  const dynamicThreshold = Math.max(0.3, baseThreshold - (queryLength / 200) * 0.2);
+
   return notes
     .map((note) => {
       const embedding = parseEmbedding(note.embedding);
@@ -44,7 +47,7 @@ export function searchBySimilarity(notes: Note[], queryEmbedding: number[], limi
         score: embedding ? cosineSimilarity(embedding, queryEmbedding) : 0,
       };
     })
-    .filter((result) => result.score >= threshold)
+    .filter((result) => result.score >= dynamicThreshold)
     .sort((first, second) => second.score - first.score)
     .slice(0, limit);
 }

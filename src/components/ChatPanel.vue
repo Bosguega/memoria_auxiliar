@@ -73,10 +73,10 @@ onUpdated(scrollToBottom);
               <p>{{ source.note.content }}</p>
               
               <div class="source-actions">
-                <button class="action-btn edit" @click="startEdit(source.note)" title="Editar">
+                <button class="action-btn edit" @click="startEdit(source.note)" title="Editar nota" aria-label="Editar nota">
                   ✏️
                 </button>
-                <button class="action-btn delete" @click="confirmDelete(source.note.id)" title="Excluir">
+                <button class="action-btn delete" @click="confirmDelete(source.note.id)" title="Excluir nota" aria-label="Excluir nota">
                   🗑️
                 </button>
               </div>
