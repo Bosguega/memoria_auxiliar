@@ -33,6 +33,7 @@ async function createNote(content: string) {
 
 function startEdit(note: Note) {
   notesStore.editingNote = note;
+  notesStore.activeView = 'add';
 }
 
 async function searchNotes(query: string) {
@@ -70,13 +71,17 @@ async function askAI(question: string) {
     
     // 2. Busca contexto relevante
     const embedding = await getEmbedding(question);
-    const results = searchBySimilarity(notesStore.notes, embedding, 5, 0.4);
+    const results = searchBySimilarity(notesStore.notes, embedding, 5, 0.5);
     
     // 3. Gera resposta baseada no contexto
     const answer = await generateAnswer(question, results);
     
-    // 4. Adiciona resposta ao chat
-    notesStore.messages.push({ role: 'assistant', content: answer });
+    // 4. Adiciona resposta ao chat com as fontes
+    notesStore.messages.push({ 
+      role: 'assistant', 
+      content: answer,
+      sources: results
+    });
   });
 }
 
@@ -101,24 +106,61 @@ onMounted(() => {
 <template>
   <main class="app-shell">
     <header>
-      <p>Memoria Auxiliar</p>
-      <h1>Notas curtas com armazenamento local e IA Gemini</h1>
+      <div class="header-content">
+        <p>Memoria Auxiliar</p>
+        <h1>Sua segunda mente com IA</h1>
+      </div>
+      
+      <nav class="main-nav">
+        <button 
+          :class="{ active: notesStore.activeView === 'search' }"
+          @click="notesStore.activeView = 'search'"
+        >
+          Pesquisar
+        </button>
+        <button 
+          :class="{ active: notesStore.activeView === 'add' }"
+          @click="notesStore.activeView = 'add'"
+        >
+          {{ notesStore.editingNote ? 'Editar Dica' : 'Incluir Dicas' }}
+        </button>
+        <button 
+          :class="{ active: notesStore.activeView === 'chat' }"
+          @click="notesStore.activeView = 'chat'"
+        >
+          Conversar (RAG)
+        </button>
+      </nav>
     </header>
 
-    <SearchBox @search="searchNotes" />
-    <NoteForm @save="createNote" />
-    <ChatPanel @ask="askAI" />
+    <div v-if="notesStore.loading" class="status-overlay">
+      <div class="spinner"></div>
+      <span>Processando...</span>
+    </div>
+    
+    <div v-if="notesStore.error" class="error-banner">{{ notesStore.error }}</div>
 
-    <div v-if="notesStore.loading" class="status">Processando...</div>
-    <div v-if="notesStore.error" class="error">{{ notesStore.error }}</div>
+    <!-- TELA: PESQUISAR -->
+    <div v-if="notesStore.activeView === 'search'" class="view-container">
+      <SearchBox @search="searchNotes" />
+      <ResultsList :results="notesStore.results" @delete="removeNote" @edit="startEdit" />
+      
+      <section v-if="notesStore.results.length" class="summary-section">
+        <button type="button" class="secondary" @click="generateSummary">
+          Gerar resumo com IA
+        </button>
+        <p v-if="notesStore.summary" class="summary-box">{{ notesStore.summary }}</p>
+      </section>
+    </div>
 
-    <ResultsList :results="notesStore.results" @delete="removeNote" @edit="startEdit" />
+    <!-- TELA: INCLUIR DICAS -->
+    <div v-if="notesStore.activeView === 'add'" class="view-container">
+      <NoteForm @save="createNote" />
+    </div>
 
-    <section v-if="notesStore.results.length" class="panel">
-      <button type="button" class="secondary" @click="generateSummary">
-        Gerar resumo com IA
-      </button>
-      <p v-if="notesStore.summary" class="summary">{{ notesStore.summary }}</p>
-    </section>
+    <!-- TELA: RAG CHAT -->
+    <div v-if="notesStore.activeView === 'chat'" class="view-container chat-view">
+      <ChatPanel @ask="askAI" @edit="startEdit" @delete="removeNote" />
+    </div>
   </main>
 </template>

@@ -9,4 +9,5 @@ export const notesStore = reactive({
   summary: '',
   loading: false,
   error: '',
+  activeView: 'search' as 'search' | 'add' | 'chat',
 });

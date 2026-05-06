@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onUpdated, watch } from 'vue';
 import { notesStore } from '../store/notesStore';
+import type { Note } from '../types';
 
 const emit = defineEmits<{
   ask: [question: string];
+  edit: [note: Note];
+  delete: [id: number];
 }>();
 
 const question = ref('');
+const chatHistory = ref<HTMLElement | null>(null);
 
 function submit() {
   const value = question.value.trim();
@@ -15,84 +19,351 @@ function submit() {
   emit('ask', value);
   question.value = '';
 }
+
+function startEdit(note: Note) {
+  emit('edit', note);
+}
+
+function confirmDelete(id: number) {
+  emit('delete', id);
+}
+
+function scrollToBottom() {
+  if (chatHistory.value) {
+    chatHistory.value.scrollTop = chatHistory.value.scrollHeight;
+  }
+}
+
+watch(() => notesStore.messages.length, () => {
+  setTimeout(scrollToBottom, 100);
+});
+
+onUpdated(scrollToBottom);
 </script>
 
 <template>
-  <section class="panel chat-panel">
-    <h2>Perguntar as memorias (RAG)</h2>
-    
-    <div v-if="notesStore.messages.length" class="chat-history">
+  <section class="chat-container">
+    <div ref="chatHistory" class="chat-history">
+      <div v-if="notesStore.messages.length === 0" class="empty-chat">
+        <div class="chat-icon">💬</div>
+        <h3>Como posso ajudar você hoje?</h3>
+        <p>Faça uma pergunta baseada nas suas notas salvas.</p>
+      </div>
+
       <div 
         v-for="(msg, index) in notesStore.messages" 
         :key="index" 
-        :class="['message', msg.role]"
+        :class="['message-wrapper', msg.role]"
       >
-        <span class="role">{{ msg.role === 'user' ? 'Voce' : 'IA' }}</span>
-        <p>{{ msg.content }}</p>
+        <div class="message-bubble">
+          <span class="role-tag">{{ msg.role === 'user' ? 'Você' : 'Assistente' }}</span>
+          <p class="content">{{ msg.content }}</p>
+        </div>
+
+        <!-- Cards de Memória (Fontes) -->
+        <div v-if="msg.sources && msg.sources.length > 0" class="sources-container">
+          <p class="sources-title">Memorias utilizadas:</p>
+          <div class="sources-grid">
+            <div 
+              v-for="source in msg.sources" 
+              :key="source.note.id" 
+              class="source-card"
+            >
+              <div class="source-score">{{ (source.score * 100).toFixed(0) }}%</div>
+              <p>{{ source.note.content }}</p>
+              
+              <div class="source-actions">
+                <button class="action-btn edit" @click="startEdit(source.note)" title="Editar">
+                  ✏️
+                </button>
+                <button class="action-btn delete" @click="confirmDelete(source.note.id)" title="Excluir">
+                  🗑️
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="notesStore.loading" class="message-wrapper assistant">
+        <div class="message-bubble loading-bubble">
+          <div class="typing-dots">
+            <span></span><span></span><span></span>
+          </div>
+        </div>
       </div>
     </div>
     
-    <form class="chat-form" @submit.prevent="submit">
-      <input 
-        v-model="question" 
-        type="text" 
-        placeholder="Ex.: Qual o nome do meu medico?"
-      />
-      <button type="submit" :disabled="notesStore.loading">Enviar</button>
-    </form>
+    <div class="chat-input-area">
+      <form class="chat-form" @submit.prevent="submit">
+        <input 
+          v-model="question" 
+          type="text" 
+          placeholder="Digite sua pergunta aqui..."
+          :disabled="notesStore.loading"
+        />
+        <button type="submit" :disabled="notesStore.loading || !question.trim()">
+          <span v-if="!notesStore.loading">Enviar</span>
+          <span v-else class="spinner-small"></span>
+        </button>
+      </form>
+    </div>
   </section>
 </template>
 
 <style scoped>
-.chat-history {
+.chat-container {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-bottom: 20px;
-  max-height: 400px;
-  overflow-y: auto;
-  padding-right: 10px;
+  height: calc(100vh - 200px);
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  overflow: hidden;
 }
 
-.message {
-  padding: 12px;
-  border-radius: 12px;
+.chat-history {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.empty-chat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  opacity: 0.5;
+  text-align: center;
+}
+
+.chat-icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.message-wrapper {
+  display: flex;
+  flex-direction: column;
   max-width: 85%;
 }
 
-.message.user {
+.message-wrapper.user {
   align-self: flex-end;
-  background: rgba(56, 189, 248, 0.1);
-  border: 1px solid rgba(56, 189, 248, 0.2);
 }
 
-.message.assistant {
+.message-wrapper.assistant {
   align-self: flex-start;
+}
+
+.message-bubble {
+  padding: 14px 18px;
+  border-radius: 18px;
+  position: relative;
+  line-height: 1.6;
+}
+
+.user .message-bubble {
+  background: var(--primary-color, #3b82f6);
+  color: white;
+  border-bottom-right-radius: 4px;
+}
+
+.assistant .message-bubble {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom-left-radius: 4px;
+}
+
+.role-tag {
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+  display: block;
+  opacity: 0.7;
+}
+
+.content {
+  margin: 0;
+  font-size: 0.95rem;
+  white-space: pre-wrap;
+}
+
+/* Sources styling */
+.sources-container {
+  margin-top: 12px;
+  width: 100%;
+}
+
+.sources-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+  opacity: 0.6;
+}
+
+.sources-grid {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.source-card {
+  min-width: 180px;
+  max-width: 250px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  padding: 10px;
+  position: relative;
+}
+
+.source-card p {
+  font-size: 0.8rem;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  opacity: 0.8;
+  margin-bottom: 8px;
+}
+
+.source-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.source-card:hover .source-actions {
+  opacity: 1;
+}
+
+.action-btn {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.role {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  font-weight: 700;
-  margin-bottom: 4px;
-  display: block;
-  opacity: 0.6;
+.action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-1px);
+}
+
+.action-btn.delete:hover {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.source-score {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #10b981;
+  font-size: 0.6rem;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-weight: bold;
+}
+
+.chat-input-area {
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.2);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .chat-form {
   display: flex;
-  gap: 10px;
+  gap: 12px;
 }
 
 .chat-form input {
   flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 12px 20px;
+  border-radius: 25px;
+  color: white;
+  outline: none;
+  transition: all 0.2s;
 }
 
-p {
-  margin: 0;
-  line-height: 1.5;
-  font-size: 0.95rem;
+.chat-form input:focus {
+  border-color: var(--primary-color, #3b82f6);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.chat-form button {
+  border-radius: 25px;
+  padding: 0 24px;
+  background: var(--primary-color, #3b82f6);
+  font-weight: 600;
+  transition: transform 0.1s;
+}
+
+.chat-form button:active {
+  transform: scale(0.95);
+}
+
+.chat-form button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Loading animation */
+.loading-bubble {
+  padding: 12px 18px;
+}
+
+.typing-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.typing-dots span {
+  width: 8px;
+  height: 8px;
+  background: currentColor;
+  border-radius: 50%;
+  opacity: 0.4;
+  animation: typing 1.4s infinite both;
+}
+
+.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typing {
+  0%, 80%, 100% { transform: scale(0.6); }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+.spinner-small {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 </style>

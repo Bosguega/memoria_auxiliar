@@ -13,4 +13,5 @@ export interface SearchResult {
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  sources?: SearchResult[];
 }
