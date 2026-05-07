@@ -432,6 +432,18 @@ fn update_note(app: tauri::AppHandle, id: i64, content: String, embedding: Strin
     Ok(())
 }
 
+#[tauri::command]
+fn delete_all_notes(app: tauri::AppHandle) -> Result<(), String> {
+    let connection = open_database(&app)?;
+    connection
+        .execute("DELETE FROM notes", [])
+        .map_err(|error| format!("Nao foi possivel excluir todas as notas: {error}"))?;
+    connection
+        .execute("DELETE FROM embedding_cache", [])
+        .map_err(|error| format!("Nao foi possivel limpar cache: {error}"))?;
+    Ok(())
+}
+
 
 
 pub fn run() {
@@ -441,6 +453,7 @@ pub fn run() {
             list_notes,
             delete_note,
             update_note,
+            delete_all_notes,
             get_cached_embedding,
             save_cached_embedding,
             generate_embedding,

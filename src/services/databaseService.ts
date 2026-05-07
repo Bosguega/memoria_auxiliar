@@ -24,6 +24,10 @@ export async function updateNote(id: number, content: string, embedding: number[
   });
 }
 
+export async function deleteAllNotes(): Promise<void> {
+  await invoke('delete_all_notes');
+}
+
 export async function getCachedEmbedding(hash: string): Promise<number[] | null> {
   const embedding = await invoke<string | null>('get_cached_embedding', { hash });
   if (!embedding) {

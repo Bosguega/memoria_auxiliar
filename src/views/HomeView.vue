@@ -4,7 +4,7 @@ import ChatPanel from '../components/ChatPanel.vue';
 import NoteForm from '../components/NoteForm.vue';
 import ResultsList from '../components/ResultsList.vue';
 import SearchBox from '../components/SearchBox.vue';
-import { deleteNote, listNotes, saveNote, updateNote } from '../services/databaseService';
+import { deleteNote, deleteAllNotes, listNotes, saveNote, updateNote } from '../services/databaseService';
 import { getEmbedding } from '../services/embeddingService';
 import { generateAnswer, summarizeResults } from '../services/llmService';
 import { searchBySimilarity } from '../services/similarityService';
@@ -71,6 +71,21 @@ async function removeNote(id: number) {
       notesStore.notes = notesStore.notes.filter(n => n.id !== id);
       notesStore.results = notesStore.results.filter(r => r.note.id !== id);
     }, 'Excluindo nota...');
+  });
+}
+
+async function clearAllNotes() {
+  showConfirmModal('Tem certeza que deseja excluir TODAS as notas? Esta ação não pode ser desfeita.', async () => {
+    await runAction(async () => {
+      await deleteAllNotes();
+      notesStore.notes = [];
+      notesStore.results = [];
+      notesStore.messages = [];
+      // Reset stats
+      notesStore.stats.streak = 0;
+      notesStore.stats.lastUse = null;
+      localStorage.setItem('memoria_auxiliar_stats', JSON.stringify(notesStore.stats));
+    }, 'Excluindo todas as notas...');
   });
 }
 
@@ -242,6 +257,7 @@ const topKeywords = computed(() => {
         <p>Notas esta semana: {{ notesThisWeek }}</p>
         <p>Streak atual: {{ notesStore.stats.streak }} dias</p>
         <p v-if="topKeywords.length">Palavras-chave mais usadas: {{ topKeywords.join(', ') }}</p>
+        <button type="button" class="secondary" @click="clearAllNotes" style="margin-top: 20px;">Excluir Todas as Notas</button>
       </section>
     </div>
 

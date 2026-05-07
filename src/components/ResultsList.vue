@@ -9,6 +9,10 @@ const emit = defineEmits<{
   delete: [id: number];
   edit: [note: Note];
 }>();
+
+function formatDate(dateString: string): string {
+  return new Date(dateString).toLocaleDateString('pt-BR');
+}
 </script>
 
 <template>
@@ -20,9 +24,10 @@ const emit = defineEmits<{
     <ol v-else class="results-list">
       <li v-for="result in results" :key="result.note.id">
         <div class="result-content">
-          <p>{{ result.note.content }}</p>
+          <p><strong># Memória {{ result.note.id }}:</strong> {{ result.note.content }}</p>
           <div class="result-meta">
-            <span>score {{ result.score.toFixed(3) }}</span>
+            <span>Score: {{ result.score.toFixed(3) }}</span>
+            <span>Data: {{ formatDate(result.note.created_at) }}</span>
             <div class="actions">
               <button class="edit-btn" @click="emit('edit', result.note)" title="Editar nota" aria-label="Editar nota">Editar</button>
               <button class="delete-btn" @click="emit('delete', result.note.id)" title="Excluir nota" aria-label="Excluir nota">Excluir</button>
@@ -46,6 +51,8 @@ const emit = defineEmits<{
   justify-content: space-between;
   align-items: center;
   font-size: 0.8rem;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .actions {
   display: flex;

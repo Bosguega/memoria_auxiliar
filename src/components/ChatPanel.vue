@@ -3,6 +3,10 @@ import { ref, onUpdated, watch } from 'vue';
 import { notesStore } from '../store/notesStore';
 import type { Note } from '../types';
 
+function formatDate(dateString: string): string {
+  return new Date(dateString).toLocaleDateString('pt-BR');
+}
+
 const emit = defineEmits<{
   ask: [question: string];
   edit: [note: Note];
@@ -70,7 +74,8 @@ onUpdated(scrollToBottom);
               class="source-card"
             >
               <div class="source-score">{{ (source.score * 100).toFixed(0) }}%</div>
-              <p>{{ source.note.content }}</p>
+              <p><strong># Memória {{ source.note.id }}:</strong> {{ source.note.content }}</p>
+              <small>Data: {{ formatDate(source.note.created_at) }}</small>
               
               <div class="source-actions">
                 <button class="action-btn edit" @click="startEdit(source.note)" title="Editar nota" aria-label="Editar nota">
@@ -232,7 +237,14 @@ onUpdated(scrollToBottom);
   -webkit-box-orient: vertical;
   overflow: hidden;
   opacity: 0.8;
+  margin-bottom: 4px;
+}
+
+.source-card small {
+  font-size: 0.7rem;
+  opacity: 0.6;
   margin-bottom: 8px;
+  display: block;
 }
 
 .source-actions {
