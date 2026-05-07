@@ -13,8 +13,11 @@ watch(() => notesStore.editingNote, (note) => {
   if (note) {
     content.value = note.content;
     error.value = '';
+  } else {
+    content.value = '';
+    error.value = '';
   }
-});
+}, { immediate: true });
 
 function validateContent(value: string): string {
   const trimmed = value.trim();
