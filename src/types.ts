@@ -15,3 +15,8 @@ export interface ChatMessage {
   content: string;
   sources?: SearchResult[];
 }
+
+export interface Stats {
+  streak: number;
+  lastUse: string | null;
+}

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, computed } from 'vue';
+import { onMounted, onUnmounted, computed, ref } from 'vue';
 import ChatPanel from '../components/ChatPanel.vue';
 import NoteForm from '../components/NoteForm.vue';
 import ResultsList from '../components/ResultsList.vue';
@@ -10,6 +10,8 @@ import { generateAnswer, summarizeResults } from '../services/llmService';
 import { searchBySimilarity } from '../services/similarityService';
 import { notesStore, updateStreak } from '../store/notesStore';
 import type { Note } from '../types';
+
+const noteFormRef = ref<InstanceType<typeof NoteForm> | null>(null);
 
 async function loadNotes() {
   notesStore.notes = await listNotes();
@@ -137,18 +139,12 @@ async function runAction(action: () => Promise<void>, message = 'Processando...'
 function handleKeydown(event: KeyboardEvent) {
   if (event.ctrlKey && event.key === 's') {
     event.preventDefault();
-    if (notesStore.activeView === 'add') {
-      // Simular submit do form
-      const form = document.querySelector('.note-form') as HTMLFormElement;
-      if (form) form.requestSubmit();
+    if (notesStore.activeView === 'add' && noteFormRef.value) {
+      noteFormRef.value.submit();
     }
   } else if (event.key === 'Escape') {
     if (notesStore.editingNote) {
       notesStore.editingNote = null;
-      // Reset content if in add view
-      if (notesStore.activeView === 'add') {
-        // Assume NoteForm will handle via watch
-      }
     }
   }
 }
@@ -241,7 +237,7 @@ const topKeywords = computed(() => {
 
     <!-- TELA: INCLUIR DICAS -->
     <div v-if="notesStore.activeView === 'add'" class="view-container">
-      <NoteForm @save="createNote" />
+      <NoteForm ref="noteFormRef" @save="createNote" />
     </div>
 
     <!-- TELA: RAG CHAT -->

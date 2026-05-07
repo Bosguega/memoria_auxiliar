@@ -1,15 +1,16 @@
 import { reactive } from 'vue';
-import type { ChatMessage, Note, SearchResult } from '../types';
+import type { ChatMessage, Note, SearchResult, Stats } from '../types';
 
 function getTodayString() {
   return new Date().toISOString().split('T')[0];
 }
 
-function loadStats() {
+function loadStats(): Stats {
   const stored = localStorage.getItem('memoria_auxiliar_stats');
   if (stored) {
     try {
-      return JSON.parse(stored);
+      const parsed = JSON.parse(stored);
+      return { streak: parsed.streak ?? 0, lastUse: parsed.lastUse ?? null };
     } catch {
       return { streak: 0, lastUse: null };
     }
@@ -17,7 +18,7 @@ function loadStats() {
   return { streak: 0, lastUse: null };
 }
 
-function saveStats(stats: any) {
+function saveStats(stats: Stats) {
   localStorage.setItem('memoria_auxiliar_stats', JSON.stringify(stats));
 }
 
@@ -55,7 +56,7 @@ export const notesStore = reactive({
   confirmModal: {
     show: false,
     message: '',
-    onConfirm: (() => {}) as () => void,
+    onConfirm: (() => { }) as () => void,
   },
   stats: reactive(stats),
 });

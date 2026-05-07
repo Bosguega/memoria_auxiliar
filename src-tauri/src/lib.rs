@@ -91,6 +91,43 @@ fn compact_error_details(details: String) -> String {
     }
 }
 
+/// Sanitiza texto para mitigar prompt injection:
+/// - Remove caracteres de controle (exceto quebras de linha básicas)
+/// - Remove tokens de sistema comuns
+/// - Trunca para tamanho máximo seguro
+fn sanitize_prompt_input(text: &str, max_length: usize) -> String {
+    const DANGEROUS_TOKENS: &[&str] = &[
+        "ignore all previous instructions",
+        "ignore all prior instructions",
+        "forget everything",
+        "system prompt",
+        "you are now",
+        "act as if",
+        "do not follow",
+        "do not obey",
+        "override",
+    ];
+
+    let mut sanitized = text
+        .chars()
+        .filter(|&c| c == '\n' || c == '\r' || c == '\t' || c.is_ascii_graphic() || c == ' ')
+        .collect::<String>();
+
+    // Lowercase para verificar tokens perigosos
+    let lower = sanitized.to_lowercase();
+    for token in DANGEROUS_TOKENS {
+        if lower.contains(token) {
+            sanitized = sanitized.replace(token, "[redacted]");
+        }
+    }
+
+    if sanitized.chars().count() > max_length {
+        sanitized.chars().take(max_length).collect()
+    } else {
+        sanitized
+    }
+}
+
 async fn retry_with_backoff<F, Fut, T>(mut attempt: F, max_retries: u32) -> Result<T, String>
 where
     F: FnMut() -> Fut,
@@ -276,8 +313,11 @@ async fn summarize_notes(app: tauri::AppHandle, notes: Vec<String>) -> Result<St
         return Err("Nao ha resultados para resumir.".to_string());
     }
 
+    const MAX_NOTE_LENGTH: usize = 5000;
+
     let notes = notes
         .into_iter()
+        .map(|note| sanitize_prompt_input(&note, MAX_NOTE_LENGTH))
         .enumerate()
         .map(|(index, note)| format!("{}. {}", index + 1, note))
         .collect::<Vec<_>>()
@@ -299,11 +339,17 @@ async fn generate_answer(
         return Err("Pergunta vazia nao pode gerar resposta.".to_string());
     }
 
+    const MAX_NOTE_LENGTH: usize = 5000;
+    const MAX_QUESTION_LENGTH: usize = 2000;
+
+    let sanitized_question = sanitize_prompt_input(&question, MAX_QUESTION_LENGTH);
+
     let context = if context_notes.is_empty() {
         "Nenhuma nota relevante encontrada.".to_string()
     } else {
         context_notes
             .into_iter()
+            .map(|note| sanitize_prompt_input(&note, MAX_NOTE_LENGTH))
             .enumerate()
             .map(|(index, note)| format!("[Nota {}]: {}", index + 1, note))
             .collect::<Vec<_>>()
@@ -312,7 +358,7 @@ async fn generate_answer(
 
     let prompt = format!(
         "Voce e um assistente de memoria pessoal. Responda a pergunta do usuario usando as notas fornecidas como contexto.\nSe a resposta nao estiver nas notas, avise que nao encontrou informacao sobre isso nas suas memorias.\n\nCONTEXTO:\n{context}\n\nPERGUNTA:\n{}",
-        question.trim()
+        sanitized_question
     );
 
     generate_text(app, prompt, "A API nao retornou resposta.").await

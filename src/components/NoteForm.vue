@@ -43,6 +43,8 @@ function submit() {
   error.value = '';
 }
 
+defineExpose({ submit });
+
 function cancel() {
   notesStore.editingNote = null;
   content.value = '';
