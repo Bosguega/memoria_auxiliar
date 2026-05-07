@@ -32,6 +32,12 @@ struct GeminiGenerateResponse {
     candidates: Option<Vec<GeminiCandidate>>,
 }
 
+#[derive(Serialize)]
+struct GenerateAnswerResponse {
+    answer: String,
+    used_ids: Vec<i64>,
+}
+
 #[derive(Deserialize)]
 struct GeminiCandidate {
     content: Option<GeminiContent>,
@@ -334,12 +340,11 @@ async fn generate_answer(
     app: tauri::AppHandle,
     question: String,
     context_notes: Vec<String>,
-) -> Result<String, String> {
+) -> Result<GenerateAnswerResponse, String> {
     if question.trim().is_empty() {
         return Err("Pergunta vazia nao pode gerar resposta.".to_string());
     }
 
-    const MAX_NOTE_LENGTH: usize = 5000;
     const MAX_QUESTION_LENGTH: usize = 2000;
 
     let sanitized_question = sanitize_prompt_input(&question, MAX_QUESTION_LENGTH);
@@ -347,21 +352,74 @@ async fn generate_answer(
     let context = if context_notes.is_empty() {
         "Nenhuma nota relevante encontrada.".to_string()
     } else {
+        // As notas ja vem formatadas com [MEMORY_ID: N] do frontend
+        // Apenas sanitizamos cada uma
         context_notes
             .into_iter()
-            .map(|note| sanitize_prompt_input(&note, MAX_NOTE_LENGTH))
-            .enumerate()
-            .map(|(index, note)| format!("[Nota {}]: {}", index + 1, note))
+            .map(|note| sanitize_prompt_input(&note, 5000))
             .collect::<Vec<_>>()
             .join("\n")
     };
 
     let prompt = format!(
-        "Voce e um assistente de memoria pessoal. Responda a pergunta do usuario usando as notas fornecidas como contexto.\nSe a resposta nao estiver nas notas, avise que nao encontrou informacao sobre isso nas suas memorias.\n\nCONTEXTO:\n{context}\n\nPERGUNTA:\n{}",
-        sanitized_question
+        r#"Voce e uma memoria auxiliar pessoal.
+
+Sua funcao e responder APENAS com base nas memorias fornecidas abaixo.
+
+REGRAS IMPORTANTES:
+- Nao invente informacoes.
+- Nao use conhecimento externo.
+- Se nao encontrar a resposta nas memorias, diga: "Nao encontrei isso nas memorias."
+- Nem toda memoria enviada precisa ser usada.
+- Use apenas as memorias realmente relevantes.
+
+MEMORIAS:
+{context}
+
+PERGUNTA:
+{sanitized_question}
+
+Agora, responda a pergunta. Depois de responder, na linha final, informe SOMENTE os IDs das memorias realmente utilizadas neste formato exato:
+USED_IDS: [id1, id2, id3]
+"#,
+        context = context,
+        sanitized_question = sanitized_question,
     );
 
-    generate_text(app, prompt, "A API nao retornou resposta.").await
+    let raw_response = generate_text(app, prompt, "A API nao retornou resposta.").await?;
+
+    // Parse USED_IDS do final da resposta
+    let used_ids = if let Some(pos) = raw_response.rfind("USED_IDS: [") {
+        let after = &raw_response[pos + 11..];
+        if let Some(end) = after.find(']') {
+            let ids_str = &after[..end];
+            ids_str
+                .split(',')
+                .filter_map(|s| {
+                    let trimmed = s.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        trimmed.parse::<i64>().ok()
+                    }
+                })
+                .collect()
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
+
+    // Remove a linha USED_IDS da resposta final
+    let answer = if let Some(pos) = raw_response.rfind("USED_IDS: [") {
+        let before = &raw_response[..pos].trim_end();
+        before.to_string()
+    } else {
+        raw_response.clone()
+    };
+
+    Ok(GenerateAnswerResponse { answer, used_ids })
 }
 
 #[tauri::command]

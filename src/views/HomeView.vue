@@ -102,21 +102,24 @@ async function askAI(question: string) {
     // 1. Adiciona pergunta ao chat
     notesStore.messages.push({ role: 'user', content: question });
 
-    // 2. Busca contexto relevante (mais para contexto, mas filtra para fontes)
+    // 2. Busca contexto relevante via similaridade vetorial
     const embedding = await getEmbedding(question);
-    const allResults = searchBySimilarity(notesStore.notes, embedding, 10, 0.5, question.length);
+    const retrievedResults = searchBySimilarity(notesStore.notes, embedding, 10, 0.5, question.length);
 
-    // Filtra fontes relevantes (score > 0.7)
-    const relevantSources = allResults.filter(r => r.score > 0.7);
+    // 3. Gera resposta - o backend envia as notas formatadas com [MEMORY_ID: N]
+    //    e a LLM retorna quais IDs foram realmente utilizados
+    const { answer, usedIds } = await generateAnswer(question, retrievedResults);
 
-    // 3. Gera resposta baseada no contexto (usa todas as similares)
-    const answer = await generateAnswer(question, allResults);
+    // 4. Filtra as fontes: usadas vs. apenas recuperadas
+    const usedSources = retrievedResults.filter(r => usedIds.includes(r.note.id));
 
-    // 4. Adiciona resposta ao chat com as fontes filtradas
+    // 5. Adiciona resposta ao chat com separação clara
     notesStore.messages.push({
       role: 'assistant',
       content: answer,
-      sources: relevantSources
+      usedSources: usedSources,
+      retrievedSources: retrievedResults,
+      usedIds: usedIds,
     });
   }, 'Pensando na resposta...');
 }

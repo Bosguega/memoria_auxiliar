@@ -13,7 +13,12 @@ export interface SearchResult {
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
-  sources?: SearchResult[];
+  /** Memorias efetivamente utilizadas pela LLM */
+  usedSources?: SearchResult[];
+  /** Memorias recuperadas pela busca vetorial (para debug) */
+  retrievedSources?: SearchResult[];
+  /** IDs das memorias utilizadas, retornados pela LLM */
+  usedIds?: number[];
 }
 
 export interface Stats {

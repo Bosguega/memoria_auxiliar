@@ -15,6 +15,11 @@ const emit = defineEmits<{
 
 const question = ref('');
 const chatHistory = ref<HTMLElement | null>(null);
+const debugExpanded = ref<Record<number, boolean>>({});
+
+function toggleDebug(index: number) {
+  debugExpanded.value[index] = !debugExpanded.value[index];
+}
 
 function submit() {
   const value = question.value.trim();
@@ -64,12 +69,12 @@ onUpdated(scrollToBottom);
           <p class="content">{{ msg.content }}</p>
         </div>
 
-        <!-- Cards de Memória (Fontes) -->
-        <div v-if="msg.sources && msg.sources.length > 0" class="sources-container">
-          <p class="sources-title">Memorias utilizadas:</p>
+        <!-- Cards de Memórias USADAS pela LLM -->
+        <div v-if="msg.usedSources && msg.usedSources.length > 0" class="sources-container">
+          <p class="sources-title">Memórias utilizadas:</p>
           <div class="sources-grid">
             <div 
-              v-for="source in msg.sources" 
+              v-for="source in msg.usedSources" 
               :key="source.note.id" 
               class="source-card"
             >
@@ -85,6 +90,31 @@ onUpdated(scrollToBottom);
                   🗑️
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Seção colapsável: Memórias Consideradas (debug) -->
+        <div v-if="msg.retrievedSources && msg.retrievedSources.length > 0" class="debug-section">
+          <button class="debug-toggle" @click="toggleDebug(index)">
+            <span class="debug-icon">{{ debugExpanded[index] ? '▼' : '▶' }}</span>
+            Memórias consideradas ({{ msg.retrievedSources.length }})
+          </button>
+          
+          <div v-if="debugExpanded[index]" class="debug-content">
+            <div 
+              v-for="source in msg.retrievedSources" 
+              :key="'debug-' + source.note.id"
+              :class="['debug-item', { 'not-used': !msg.usedIds?.includes(source.note.id) }]"
+            >
+              <div class="debug-header">
+                <span class="debug-badge" :class="{ used: msg.usedIds?.includes(source.note.id) }">
+                  {{ msg.usedIds?.includes(source.note.id) ? '✓ Usada' : '✗ Descartada' }}
+                </span>
+                <span class="debug-score">Score: {{ (source.score * 100).toFixed(1) }}%</span>
+                <span class="debug-date">{{ formatDate(source.note.created_at) }}</span>
+              </div>
+              <p class="debug-content-text"><strong>#{{ source.note.id }}:</strong> {{ source.note.content }}</p>
             </div>
           </div>
         </div>
@@ -199,7 +229,7 @@ onUpdated(scrollToBottom);
   white-space: pre-wrap;
 }
 
-/* Sources styling */
+/* Sources styling - used memories */
 .sources-container {
   margin-top: 12px;
   width: 100%;
@@ -293,6 +323,100 @@ onUpdated(scrollToBottom);
   padding: 2px 6px;
   border-radius: 10px;
   font-weight: bold;
+}
+
+/* Debug section - all retrieved memories */
+.debug-section {
+  margin-top: 8px;
+  width: 100%;
+}
+
+.debug-toggle {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  width: 100%;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.debug-toggle:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.debug-icon {
+  font-size: 0.6rem;
+}
+
+.debug-content {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.debug-item {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.debug-item.not-used {
+  opacity: 0.6;
+}
+
+.debug-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.65rem;
+  margin-bottom: 4px;
+}
+
+.debug-badge {
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.6rem;
+}
+
+.debug-badge.used {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.debug-badge:not(.used) {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.15);
+}
+
+.debug-score {
+  color: var(--text-secondary);
+}
+
+.debug-date {
+  color: var(--text-secondary);
+  margin-left: auto;
+}
+
+.debug-content-text {
+  font-size: 0.75rem;
+  margin: 0;
+  opacity: 0.7;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .chat-input-area {

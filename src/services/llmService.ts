@@ -11,9 +11,19 @@ export async function summarizeResults(results: SearchResult[]): Promise<string>
   });
 }
 
-export async function generateAnswer(question: string, results: SearchResult[]): Promise<string> {
-  return invoke<string>('generate_answer', {
+export async function generateAnswer(question: string, results: SearchResult[]): Promise<{ answer: string; usedIds: number[] }> {
+  // Formata as notas com [MEMORY_ID: N] para a LLM identificar cada uma
+  const formattedNotes = results.map(
+    (result) => `[MEMORY_ID: ${result.note.id}]\n${result.note.content}`
+  );
+
+  const response = await invoke<{ answer: string; used_ids: number[] }>('generate_answer', {
     question,
-    contextNotes: results.map((result) => result.note.content),
+    contextNotes: formattedNotes,
   });
+
+  return {
+    answer: response.answer,
+    usedIds: response.used_ids,
+  };
 }
