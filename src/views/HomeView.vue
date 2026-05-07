@@ -85,20 +85,22 @@ async function askAI(question: string) {
     // 1. Adiciona pergunta ao chat
     notesStore.messages.push({ role: 'user', content: question });
 
-    // 2. Busca contexto relevante
+    // 2. Busca contexto relevante (mais para contexto, mas filtra para fontes)
     const embedding = await getEmbedding(question);
-    const results = searchBySimilarity(notesStore.notes, embedding, 5, 0.5, question.length);
+    const allResults = searchBySimilarity(notesStore.notes, embedding, 10, 0.5, question.length);
 
-    // 3. Gera resposta baseada no contexto
-    const answer = await generateAnswer(question, results);
+    // Filtra fontes relevantes (score > 0.7)
+    const relevantSources = allResults.filter(r => r.score > 0.7);
 
-    // 4. Adiciona resposta ao chat com as fontes
+    // 3. Gera resposta baseada no contexto (usa todas as similares)
+    const answer = await generateAnswer(question, allResults);
+
+    // 4. Adiciona resposta ao chat com as fontes filtradas
     notesStore.messages.push({
       role: 'assistant',
       content: answer,
-      sources: results
+      sources: relevantSources
     });
-    updateStreak();
   }, 'Pensando na resposta...');
 }
 
