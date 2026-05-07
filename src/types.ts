@@ -25,3 +25,11 @@ export interface Stats {
   streak: number;
   lastUse: string | null;
 }
+
+/** Tipos de segmento para conteudo interativo (links, caminhos, texto) */
+export type InteractiveSegmentType = 'text' | 'url' | 'path';
+
+export interface InteractiveSegment {
+  type: InteractiveSegmentType;
+  value: string;
+}

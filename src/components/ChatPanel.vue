@@ -2,6 +2,7 @@
 import { ref, onUpdated, watch } from 'vue';
 import { notesStore } from '../store/notesStore';
 import type { Note } from '../types';
+import InteractiveContent from './InteractiveContent.vue';
 
 function formatDate(dateString: string): string {
   return new Date(dateString).toLocaleDateString('pt-BR');
@@ -79,7 +80,7 @@ onUpdated(scrollToBottom);
               class="source-card"
             >
               <div class="source-score">{{ (source.score * 100).toFixed(0) }}%</div>
-              <p><strong># Memória {{ source.note.id }}:</strong> {{ source.note.content }}</p>
+              <InteractiveContent :text="'# Memória ' + source.note.id + ': ' + source.note.content" />
               <small>Data: {{ formatDate(source.note.created_at) }}</small>
               
               <div class="source-actions">
@@ -114,7 +115,7 @@ onUpdated(scrollToBottom);
                 <span class="debug-score">Score: {{ (source.score * 100).toFixed(1) }}%</span>
                 <span class="debug-date">{{ formatDate(source.note.created_at) }}</span>
               </div>
-              <p class="debug-content-text"><strong>#{{ source.note.id }}:</strong> {{ source.note.content }}</p>
+              <InteractiveContent :text="'#' + source.note.id + ': ' + source.note.content" class="debug-content-text" />
             </div>
           </div>
         </div>
@@ -264,6 +265,7 @@ onUpdated(scrollToBottom);
   margin: 0;
   display: -webkit-box;
   -webkit-line-clamp: 3;
+  line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
   opacity: 0.8;
@@ -415,6 +417,7 @@ onUpdated(scrollToBottom);
   opacity: 0.7;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
